@@ -2,21 +2,23 @@ let height = "100px"
 let font = "Montserrat";
 let html = `
 <title>Style editor</title>
-
+<script src="https://cdn.jsdelivr.net/npm/less@4"></script>
 <script src=https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/ace.js></script>
 <script>window.define = ace.define;</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/keybinding-vscode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/mode-css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/mode-less.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.14/ext-language_tools.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.6/ext-beautify.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.0/beautify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.0/beautify-css.min.js"></script>
 <div id="top">
     <h1>Style editor</h1>
+    <label><input type="checkbox" id="live" name="live" checked> Enable live update</label>
     <div id="buttons">
-        <label><input type="checkbox" id="live" name="live" checked> Enable live update</label>
         <button id="beautify" onclick="beautify()">Beautify</button>
         <button id="save" onclick="save()">Save to file</button>
+        <button id="copy" onclick="copy()">Copy</button>
+        <button id="compile" onclick="compile()">Compile to CSS</button>
     </div>
 </div>
 <div id=editor></div>
@@ -65,7 +67,7 @@ let placeholder = "Write CSS here! Any edits will update the main page in real t
 var langTools = ace.require("ace/ext/language_tools");
 var editor = ace.edit("editor");
 editor.setTheme("ace/theme/monokai");
-editor.session.setMode("ace/mode/css");
+editor.session.setMode("ace/mode/less");
 editor.setShowPrintMargin(false);
 editor.setOptions({
     enableBasicAutocompletion: true,
@@ -97,12 +99,13 @@ function update() {
 editor.on("input", update);
 setTimeout(update, 100);
 
-function setStyle(code){
+async function setStyle(code){
     if (!$("#live").checked){return}
     localStorage.setItem("style_bookmarklet_style", code);
     let w = window.opener;
     w.postMessage({type: "setStorage", code})
     let doc = w.document;
+    code = (await less.render(code)).css;
     if (doc.querySelector("#style_bookmarklet_style")){
         doc.querySelector("#style_bookmarklet_style").innerHTML = code;
     } else {
@@ -112,10 +115,26 @@ function setStyle(code){
     }
 }
 function beautify(){
-    editor.session.setValue(css_beautify(editor.session.getValue()))
+    setValue(css_beautify(editor.session.getValue()))
 }
 function save(){
     download(editor.session.getValue(), window.opener.location.hostname.replace(/\\./g, "-") + " style.css", "text/css")
+}
+async function copy(){
+    try {
+        await navigator.clipboard.writeText(editor.session.getValue())
+    } catch(_){
+        prompt("Couldn't copy, copy from here instead: ", editor.session.getValue());
+    }
+}
+async function compile() {
+    let {css} = await less.render(editor.session.getValue());
+    setValue(css_beautify(css));
+}
+function setValue(val){
+    let o = editor.selection.toJSON();
+    editor.session.setValue(val);
+    editor.selection.fromJSON(o);
 }
 function download(data, filename, type) {
     var file = new Blob([data], {type: type});
